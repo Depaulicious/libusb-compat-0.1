@@ -707,6 +707,39 @@ API_EXPORTED usb_dev_handle *usb_open(struct usb_device *dev)
 	return udev;
 }
 
+API_EXPORTED usb_dev_handle *usb_wrap_fd(int fd)
+{
+	int r;
+	usbi_dbg("");
+
+	/* libusb-1.0 initialization might have failed, but we can't indicate
+	 * this with libusb-0.1, so trap that situation here */
+	if (!ctx)
+		return NULL;
+
+	usb_dev_handle *udev = malloc(sizeof(*udev));
+	if (!udev)
+		return NULL;
+
+	r = libusb_wrap_fd(ctx, fd, &udev->handle);
+	if (r < 0) {
+		if (r == LIBUSB_ERROR_ACCESS) {
+			usbi_info("Device wrap fd failed due to a permission denied error.");
+			usbi_info("libusb requires write access to USB device nodes.");
+		} else if (r == LIBUSB_ERROR_NOT_SUPPORTED) {
+			usbi_info("Device wrap fd failed; operation not supported on this platform.");
+		}
+		usbi_err("could not wrap file descriptor, error %d", r);
+		free(udev);
+		errno = libusb_to_errno(r);
+		return NULL;
+	}
+
+	udev->last_claimed_interface = -1;
+	udev->device = NULL;
+	return udev;
+}
+
 API_EXPORTED int usb_close(usb_dev_handle *dev)
 {
 	usbi_dbg("");
